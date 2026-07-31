@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-base text-ink font-sans antialiased;
+    font-feature-settings: "tnum" 1; /* tabular numerals keep price columns from jittering */
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl2 bg-surface;
+  }
+
+  .chip {
+    @apply rounded-full px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors
+           hover:bg-hover hover:text-ink;
+  }
+
+  .chip-active {
+    @apply bg-raised text-ink;
+  }
+
+  .tag {
+    @apply rounded-md bg-raised px-1.5 py-0.5 text-2xs font-medium text-ink-muted;
+  }
+
+  .num {
+    @apply font-mono tabular-nums;
+  }
+}

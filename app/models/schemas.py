@@ -126,6 +126,82 @@ class NewsSummary(BaseModel):
     items: list[NewsItem]
 
 
+class RiskMetrics(BaseModel):
+    cagr_pct: float
+    sharpe_ratio: float
+    max_drawdown_pct: float
+    annualized_volatility_pct: float
+    value_at_risk_95_pct: float = Field(
+        description="Historical one-day VaR at 95% confidence, as a negative percent."
+    )
+
+
+class StockDetail(BaseModel):
+    symbol: str
+    name: str
+    market: str
+    kind: str
+    price: float
+    change: float
+    change_pct: float
+    bars: list[Bar]
+    forecast: Forecast
+    metrics: RiskMetrics
+
+
+class IndexQuote(BaseModel):
+    """One card in the market-overview grid."""
+
+    key: str
+    label: str
+    symbol: str
+    group: str
+    price: float
+    change: float
+    change_pct: float
+    unit: str = ""
+    decimals: int = 2
+    sparkline: list[float] = Field(default_factory=list)
+
+
+class MoverRow(BaseModel):
+    """One row of the ranked table."""
+
+    rank: int
+    symbol: str
+    name: str
+    market: str
+    kind: str
+    price: float
+    change: float
+    change_pct: float
+    volume: float | None = None
+    turnover: float | None = None
+    market_cap: float | None = None
+
+
+class MarketBoard(BaseModel):
+    as_of: datetime
+    indices: list[IndexQuote]
+    movers: list[MoverRow]
+    stale: bool = Field(
+        True,
+        description="Quotes are delayed, not live. The UI must not label them real-time.",
+    )
+
+
+class WatchlistEntry(BaseModel):
+    symbol: str
+    name: str
+    price: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+
+
+class WatchlistView(BaseModel):
+    entries: list[WatchlistEntry]
+
+
 class OrderRequest(BaseModel):
     symbol: str
     side: Side

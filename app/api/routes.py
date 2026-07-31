@@ -11,18 +11,26 @@ from app.models.schemas import (
     Fill,
     Forecast,
     ForecastMethod,
+    IndexQuote,
     Lot,
+    MarketBoard,
+    MoverRow,
     NewsSummary,
     OrderRequest,
     PortfolioSummary,
     PriceHistory,
     Quote,
+    StockDetail,
+    WatchlistView,
 )
 from app.services import dividends as dividend_service
 from app.services import forecast as forecast_service
+from app.services import market_board as board_service
 from app.services import news as news_service
 from app.services import paper_trading
 from app.services import portfolio as portfolio_service
+from app.services import stock_detail as detail_service
+from app.services import watchlist as watchlist_service
 
 router = APIRouter()
 
@@ -49,6 +57,58 @@ def get_history(symbol: str, lookback_days: int = Query(365, ge=30, le=3650)) ->
     return PriceHistory(symbol=symbol.upper(), bars=bars)
 
 
+@market.get("/indices", response_model=list[IndexQuote])
+def get_indices() -> list[IndexQuote]:
+    """Index cards for the dashboard grid, each with an intraday sparkline."""
+    return board_service.get_indices()
+
+
+@market.get("/movers", response_model=list[MoverRow])
+def get_movers(
+    market_filter: str = Query("all", alias="market", pattern="^(all|KR|US)$"),
+    sort_by: str = Query("turnover", pattern="^(turnover|volume|market_cap|gainers|losers)$"),
+    limit: int = Query(30, ge=1, le=100),
+) -> list[MoverRow]:
+    return board_service.get_movers(market=market_filter, sort_by=sort_by, limit=limit)
+
+
+@market.get("/board", response_model=MarketBoard)
+def get_board(
+    market_filter: str = Query("all", alias="market", pattern="^(all|KR|US)$"),
+    sort_by: str = Query("turnover", pattern="^(turnover|volume|market_cap|gainers|losers)$"),
+    limit: int = Query(30, ge=1, le=100),
+) -> MarketBoard:
+    """Indices + movers in one round trip, so the dashboard renders in a single fetch."""
+    return board_service.get_board(market=market_filter, sort_by=sort_by, limit=limit)
+
+
+# --- watchlist ---
+
+watchlist = APIRouter(prefix="/watchlist", tags=["watchlist"])
+
+
+def _watchlist_view() -> WatchlistView:
+    symbols = deps.watchlist_store().symbols()
+    return watchlist_service.build_view(symbols, board_service.snapshot_many(tuple(symbols)))
+
+
+@watchlist.get("", response_model=WatchlistView)
+def read_watchlist() -> WatchlistView:
+    return _watchlist_view()
+
+
+@watchlist.post("/{symbol}", response_model=WatchlistView, status_code=201)
+def add_to_watchlist(symbol: str) -> WatchlistView:
+    deps.watchlist_store().add(symbol)
+    return _watchlist_view()
+
+
+@watchlist.delete("/{symbol}", response_model=WatchlistView)
+def remove_from_watchlist(symbol: str) -> WatchlistView:
+    deps.watchlist_store().remove(symbol)
+    return _watchlist_view()
+
+
 # --- forecasting ---
 
 forecast = APIRouter(prefix="/forecast", tags=["forecast"])
@@ -63,6 +123,28 @@ def project(
     try:
         bars = deps.market_data().get_history(symbol, lookback_days)
         return forecast_service.build_forecast(symbol, bars, method)
+    except ProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# --- stock detail ---
+
+stocks = APIRouter(prefix="/stocks", tags=["stocks"])
+
+
+@stocks.get("/{symbol}", response_model=StockDetail)
+def get_stock_detail(
+    symbol: str,
+    method: ForecastMethod = ForecastMethod.MONTE_CARLO,
+    lookback_days: int = Query(detail_service.DEFAULT_LOOKBACK_DAYS, ge=90, le=3650),
+) -> StockDetail:
+    """Everything the 종목 상세 chart needs, minus news (fetched separately so a
+    slow headline feed never blocks the price chart)."""
+    try:
+        bars = deps.market_data().get_history(symbol, lookback_days)
+        return detail_service.build_detail(symbol, bars, method)
     except ProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
@@ -144,5 +226,5 @@ def place_paper_order(order: OrderRequest) -> Fill:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-for sub in (market, forecast, portfolio, news, paper):
+for sub in (market, watchlist, forecast, stocks, portfolio, news, paper):
     router.include_router(sub)

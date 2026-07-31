@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.data.providers import MarketDataProvider, get_provider
 from app.services.news import NewsProvider, YFinanceNewsProvider
 from app.services.portfolio import PortfolioStore
+from app.services.watchlist import WatchlistStore
 
 
 @lru_cache
@@ -27,6 +28,11 @@ def portfolio_store() -> PortfolioStore:
         path=settings.data_dir / "portfolio.json",
         starting_cash=settings.paper_starting_cash,
     )
+
+
+@lru_cache
+def watchlist_store() -> WatchlistStore:
+    return WatchlistStore(path=get_settings().data_dir / "watchlist.json")
 
 
 def latest_prices(symbols: list[str]) -> dict[str, float]:

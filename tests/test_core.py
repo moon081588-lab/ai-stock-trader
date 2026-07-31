@@ -7,8 +7,18 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.core import analytics
+from app.data import cache
+from app.data.universe import INDICES, UNIVERSE, display_name
 from app.models.schemas import Bar, ForecastMethod, Lot, OrderRequest, Side
-from app.services import dividends, forecast, paper_trading, portfolio
+from app.services import (
+    dividends,
+    forecast,
+    paper_trading,
+    portfolio,
+    stock_detail,
+    watchlist,
+)
 from app.services.news import LexiconSentimentScorer
 
 
@@ -178,3 +188,129 @@ def test_lexicon_sentiment_direction(headline, expected):
     score = LexiconSentimentScorer().score(headline)
     assert (score > 0) == (expected > 0)
     assert (score < 0) == (expected < 0)
+
+
+# --- risk metrics ---
+
+
+def test_max_drawdown_is_negative_after_a_decline():
+    bars = make_bars(60)
+    bars[30].close = bars[30].close * 0.7  # inject a trough
+    assert analytics.max_drawdown(bars) < -0.2
+
+
+def test_max_drawdown_is_zero_for_monotonic_rise():
+    assert analytics.max_drawdown(make_bars(60, daily_drift=0.002)) == pytest.approx(0, abs=1e-9)
+
+
+def test_beta_against_itself_is_one():
+    bars = make_bars(120)
+    assert analytics.beta(bars, bars) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_value_at_risk_is_a_loss():
+    assert analytics.value_at_risk(make_bars(200)) <= 0
+
+
+def test_cagr_positive_for_rising_series():
+    assert analytics.cagr(make_bars(400, daily_drift=0.001)) > 0
+
+
+# --- stock detail ---
+
+
+def test_detail_bundles_forecast_and_metrics():
+    detail = stock_detail.build_detail("NVDA", make_bars(400))
+
+    assert detail.symbol == "NVDA"
+    assert detail.name == "엔비디아"  # resolved from the universe
+    assert detail.market == "US"
+    assert len(detail.bars) == 400
+    assert detail.forecast.points
+    assert detail.metrics.annualized_volatility_pct > 0
+
+
+def test_detail_falls_back_for_unknown_symbol():
+    detail = stock_detail.build_detail("ZZZZ", make_bars(200))
+    assert detail.name == "ZZZZ"
+    assert detail.market == "US"
+
+
+def test_detail_rejects_short_history():
+    with pytest.raises(ValueError, match="at least 30 bars"):
+        stock_detail.build_detail("NVDA", make_bars(10))
+
+
+def test_detail_change_matches_last_two_bars():
+    bars = make_bars(100)
+    detail = stock_detail.build_detail("NVDA", bars)
+    assert detail.change == pytest.approx(bars[-1].close - bars[-2].close, abs=0.01)
+
+
+# --- cache ---
+
+
+def test_ttl_cache_serves_hit_then_expires(monkeypatch):
+    cache.clear()
+    calls = []
+
+    @cache.ttl_cache(ttl=10, prefix="t")
+    def expensive(x):
+        calls.append(x)
+        return x * 2
+
+    assert expensive(3) == 6
+    assert expensive(3) == 6
+    assert calls == [3]  # second call served from cache
+
+    now = [0.0]
+    monkeypatch.setattr(cache.time, "monotonic", lambda: now[0])
+    cache.clear()
+    assert expensive(3) == 6
+    now[0] = 999.0
+    assert expensive(3) == 6
+    assert calls == [3, 3, 3]  # expired, so recomputed
+
+
+def test_cache_distinguishes_arguments():
+    cache.clear()
+
+    @cache.ttl_cache(ttl=10, prefix="args")
+    def identity(x):
+        return x
+
+    assert identity(1) == 1
+    assert identity(2) == 2
+
+
+# --- universe / watchlist ---
+
+
+def test_universe_symbols_are_unique():
+    symbols = [spec.symbol for spec in UNIVERSE]
+    assert len(symbols) == len(set(symbols))
+    assert len({spec.key for spec in INDICES}) == len(INDICES)
+
+
+def test_display_name_falls_back_to_symbol():
+    assert display_name("005930.KS") == "삼성전자"
+    assert display_name("UNKNOWN") == "UNKNOWN"
+
+
+def test_watchlist_add_is_idempotent(tmp_path):
+    store = watchlist.WatchlistStore(tmp_path / "w.json")
+    store.add("NVDA")
+    store.add("NVDA")
+    assert store.symbols().count("NVDA") == 1
+
+    store.remove("NVDA")
+    assert "NVDA" not in store.symbols()
+
+
+def test_watchlist_view_renders_unpriced_symbols():
+    snapshots = {"NVDA": {"price": 100.0, "change": 1.0, "change_pct": 1.0}}
+    view = watchlist.build_view(["NVDA", "005930.KS"], snapshots)
+
+    assert [e.symbol for e in view.entries] == ["NVDA", "005930.KS"]
+    assert view.entries[0].price == 100.0
+    assert view.entries[1].price is None  # still listed, just without a quote

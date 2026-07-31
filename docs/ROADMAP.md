@@ -14,8 +14,17 @@ Phase 1 is built. Everything below it is planned.
 - [x] Risk metrics: Sharpe, max drawdown, beta, VaR, CAGR
 - [x] Test suite covering the pure-logic layer
 
+## Phase 1.5 — Dashboard ✅
+
+- [x] React + Vite + Tailwind frontend, dark theme, red-up/blue-down
+- [x] `GET /market/board` — index cards + ranked movers in one round trip
+- [x] Watchlist CRUD backing the right rail
+- [x] In-memory TTL cache (the board touches ~30 symbols per render)
+- [x] 홈 dashboard and 내 계좌 portfolio screens
+
 ## Phase 2 — Better data
 
+- [ ] Move the TTL cache to disk/Redis so it survives restarts and workers
 - [ ] Disk cache with TTL so yfinance isn't hit on every request
 - [ ] SQLite store: transaction history, realized gains, time-weighted return
 - [ ] Fundamentals: P/E, margins, revenue growth, debt
@@ -40,8 +49,11 @@ Phase 1 is built. Everything below it is planned.
 
 ## Phase 5 — Interface
 
-- [ ] React dashboard: holdings, allocation, dividend calendar, forecast charts
-- [ ] Watchlists and alerts
+- [x] React dashboard: holdings, allocation, market board
+- [x] Watchlist
+- [x] 종목 상세 screen: candlestick chart with forecast bands overlaid
+- [ ] Paper trading order ticket in the UI
+- [ ] Price alerts
 - [ ] Scheduled daily digest
 
 ## Phase 6 — Portfolio engineering
