@@ -15,13 +15,12 @@ cd ai-stock-trader
 ```
 
 That's it. On a fresh clone it creates the virtualenv, installs both dependency
-sets, then runs the API and the dashboard together with output prefixed `[api]`
-and `[web]`. The browser opens once Vite is listening; Ctrl+C stops both.
+sets, then runs the API and the dashboard. Ctrl+C stops both.
 
 - Dashboard: http://localhost:5173
 - API docs: http://127.0.0.1:8000/docs
 
-Run `NO_OPEN=1 ./start.sh` to skip the browser launch.
+In Terminal.app, ⌘-click a printed URL to open it.
 
 Vite proxies `/api` to the backend, so there's no CORS setup in dev.
 
