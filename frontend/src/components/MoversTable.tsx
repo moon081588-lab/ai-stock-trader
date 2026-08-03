@@ -1,7 +1,9 @@
+import { memo } from "react";
 import { Link } from "react-router-dom";
 
 import { formatKrwCompact, formatPct, formatPrice, toneClass } from "../lib/format";
 import type { MarketFilter, MoverRow, SortKey } from "../lib/types";
+import type { FlashDirection } from "../lib/useLivePrices";
 import TickerAvatar from "./TickerAvatar";
 
 const MARKETS: { value: MarketFilter; label: string }[] = [
@@ -28,6 +30,8 @@ interface Props {
   watched: Set<string>;
   onToggleWatch: (symbol: string) => void;
   asOf: string | null;
+  flash: Record<string, FlashDirection>;
+  connected: boolean;
 }
 
 function Heart({ filled }: { filled: boolean }) {
@@ -41,6 +45,90 @@ function Heart({ filled }: { filled: boolean }) {
   );
 }
 
+/**
+ * One table row, memoized.
+ *
+ * Ticks arrive for all 24 symbols at once but usually move only a few prices.
+ * Home reuses row objects that didn't change, so this comparison lets React
+ * skip re-rendering the untouched majority.
+ */
+const Row = memo(function Row({
+  row,
+  watched,
+  flashDir,
+  onToggleWatch,
+}: {
+  row: MoverRow;
+  watched: boolean;
+  flashDir: FlashDirection | undefined;
+  onToggleWatch: (symbol: string) => void;
+}) {
+  const strong = Math.abs(row.change_pct) >= 5;
+  const flashClass =
+    flashDir === "up" ? "animate-flashUp" : flashDir === "down" ? "animate-flashDown" : "";
+
+  return (
+    <tr className="group transition-colors hover:bg-hover">
+      <td className="py-2.5 pl-5">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => onToggleWatch(row.symbol)}
+            aria-label={`${row.name} 관심 종목 토글`}
+            className="opacity-70 transition-opacity hover:opacity-100"
+          >
+            <Heart filled={watched} />
+          </button>
+          <span className="num text-sm text-ink-muted">{row.rank}</span>
+        </div>
+      </td>
+
+      <td className="py-2.5">
+        <Link
+          to={`/stock/${encodeURIComponent(row.symbol)}`}
+          className="flex items-center gap-2.5"
+        >
+          <TickerAvatar symbol={row.symbol} name={row.name} />
+          <div className="min-w-0">
+            <div className="truncate text-[0.9375rem] font-semibold group-hover:underline">
+              {row.name}
+            </div>
+            <div className="text-2xs text-ink-faint">
+              {row.symbol}
+              {row.kind === "etf" && <span className="tag ml-1.5">ETF</span>}
+            </div>
+          </div>
+        </Link>
+      </td>
+
+      <td className="py-2.5 pr-6 text-right">
+        <span
+          className={`num inline-block rounded-md px-1.5 py-0.5 text-[0.9375rem] font-semibold ${flashClass}`}
+        >
+          {formatPrice(row.price, row.market === "KR" ? 0 : 2, row.market === "KR" ? "원" : "$")}
+        </span>
+      </td>
+
+      <td className="py-2.5 pr-6 text-right">
+        <span
+          className={`num inline-block rounded-md px-2 py-1 text-[0.9375rem] font-bold ${toneClass(
+            row.change_pct,
+          )} ${strong ? (row.change_pct > 0 ? "bg-up-soft" : "bg-down-soft") : ""}`}
+        >
+          {formatPct(row.change_pct)}
+        </span>
+      </td>
+
+      <td className="num py-2.5 pr-6 text-right text-sm text-ink-muted">
+        {formatKrwCompact(row.turnover)}
+      </td>
+      <td className="num py-2.5 pr-5 text-right text-sm text-ink-muted">
+        {formatKrwCompact(row.market_cap)}
+      </td>
+    </tr>
+  );
+});
+
 export default function MoversTable({
   rows,
   loading,
@@ -51,14 +139,28 @@ export default function MoversTable({
   watched,
   onToggleWatch,
   asOf,
+  flash,
+  connected,
 }: Props) {
+  const liveCount = rows.filter((row) => row.live).length;
   return (
     <section className="card overflow-hidden">
-      <div className="flex items-center gap-4 px-5 pt-5">
+      <div className="flex items-center gap-3 px-5 pt-5">
         <h2 className="text-[1.0625rem] font-bold">실시간 차트</h2>
-        <span className="text-[0.8125rem] text-ink-faint">
-          {asOf ? `${asOf} 기준 · 지연 시세` : "지연 시세"}
-        </span>
+
+        {connected ? (
+          <span className="flex items-center gap-1.5 text-[0.8125rem] text-ink-muted">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#26A96C]" />
+            실시간 {liveCount}종목
+            {rows.length > liveCount && (
+              <span className="text-ink-faint">· 지연 {rows.length - liveCount}종목</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-[0.8125rem] text-ink-faint">
+            {loading ? "시세를 불러오는 중이에요" : asOf ? `${asOf} 기준 · 지연 시세` : "지연 시세"}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
@@ -106,67 +208,15 @@ export default function MoversTable({
                     </td>
                   </tr>
                 ))
-              : rows.map((row) => {
-                  const strong = Math.abs(row.change_pct) >= 5;
-                  return (
-                    <tr key={row.symbol} className="group transition-colors hover:bg-hover">
-                      <td className="py-2.5 pl-5">
-                        <div className="flex items-center gap-2.5">
-                          <button
-                            type="button"
-                            onClick={() => onToggleWatch(row.symbol)}
-                            aria-label={`${row.name} 관심 종목 토글`}
-                            className="opacity-70 transition-opacity hover:opacity-100"
-                          >
-                            <Heart filled={watched.has(row.symbol)} />
-                          </button>
-                          <span className="num text-sm text-ink-muted">{row.rank}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5">
-                        <Link
-                          to={`/stock/${encodeURIComponent(row.symbol)}`}
-                          className="flex items-center gap-2.5"
-                        >
-                          <TickerAvatar symbol={row.symbol} name={row.name} />
-                          <div className="min-w-0">
-                            <div className="truncate text-[0.9375rem] font-semibold group-hover:underline">
-                              {row.name}
-                            </div>
-                            <div className="text-2xs text-ink-faint">
-                              {row.symbol}
-                              {row.kind === "etf" && <span className="tag ml-1.5">ETF</span>}
-                            </div>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="num py-2.5 pr-6 text-right text-[0.9375rem] font-semibold">
-                        {formatPrice(row.price, row.market === "KR" ? 0 : 2, row.market === "KR" ? "원" : "$")}
-                      </td>
-                      <td className="py-2.5 pr-6 text-right">
-                        <span
-                          className={`num inline-block rounded-md px-2 py-1 text-[0.9375rem] font-bold ${toneClass(
-                            row.change_pct,
-                          )} ${
-                            strong
-                              ? row.change_pct > 0
-                                ? "bg-up-soft"
-                                : "bg-down-soft"
-                              : ""
-                          }`}
-                        >
-                          {formatPct(row.change_pct)}
-                        </span>
-                      </td>
-                      <td className="num py-2.5 pr-6 text-right text-sm text-ink-muted">
-                        {formatKrwCompact(row.turnover)}
-                      </td>
-                      <td className="num py-2.5 pr-5 text-right text-sm text-ink-muted">
-                        {formatKrwCompact(row.market_cap)}
-                      </td>
-                    </tr>
-                  );
-                })}
+              : rows.map((row) => (
+                  <Row
+                    key={row.symbol}
+                    row={row}
+                    watched={watched.has(row.symbol)}
+                    flashDir={flash[row.symbol]}
+                    onToggleWatch={onToggleWatch}
+                  />
+                ))}
           </tbody>
         </table>
       </div>

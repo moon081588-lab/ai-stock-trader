@@ -25,6 +25,8 @@ export interface MoverRow {
   volume: number | null;
   turnover: number | null;
   market_cap: number | null;
+  /** Set client-side once a live tick has been merged in. */
+  live?: boolean;
 }
 
 export interface MarketBoard {
@@ -37,6 +39,7 @@ export interface MarketBoard {
 export interface WatchlistEntry {
   symbol: string;
   name: string;
+  market: "KR" | "US";
   price: number | null;
   change: number | null;
   change_pct: number | null;

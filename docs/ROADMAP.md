@@ -22,6 +22,14 @@ Phase 1 is built. Everything below it is planned.
 - [x] In-memory TTL cache (the board touches ~30 symbols per render)
 - [x] 홈 dashboard and 내 계좌 portfolio screens
 
+## Phase 1.7 — Live prices ✅
+
+- [x] Single upstream WebSocket to Yahoo's streamer, fanned out to browsers
+- [x] `WS /api/v1/ws/prices` with snapshot-on-connect and heartbeats
+- [x] Polling fallback for symbols the stream doesn't carry, flagged delayed
+- [x] Client-side filtering and sorting (chip clicks no longer refetch)
+- [x] Board cache prewarmed at startup
+
 ## Phase 2 — Better data
 
 - [ ] Move the TTL cache to disk/Redis so it survives restarts and workers

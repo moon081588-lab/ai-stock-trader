@@ -6,8 +6,10 @@ const LINKS = [
 ];
 
 export default function TopNav() {
+  // Solid background, not backdrop-blur: blurring a sticky full-width bar forces
+  // a repaint of everything behind it on every scroll frame.
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-8 bg-base/90 px-6 backdrop-blur">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-8 bg-base px-6">
       <div className="flex items-center gap-2.5">
         <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden>
           <circle cx="13" cy="13" r="13" fill="#3182F6" />

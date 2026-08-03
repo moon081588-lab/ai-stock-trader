@@ -1,19 +1,22 @@
+# Floors, not exact pins.
+#
+# This file originally used `==` everywhere. On Python 3.14 that broke: the
+# pinned pydantic-core predates cp314 wheels, so pip fell back to compiling it
+# from Rust and hit pyo3's 3.13 ceiling. Floors let pip pick a version that
+# actually has a wheel for your interpreter.
+
 # --- API layer ---
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-pydantic-settings==2.7.0
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.12.0          # first release shipping cp314 wheels
+pydantic-settings>=2.7.0
 
 # --- Data / analysis ---
-pandas==2.2.3
-numpy==2.2.1
-yfinance==0.2.51
-requests==2.32.3
-
-# --- Forecasting (baseline models; swap/extend later) ---
-scikit-learn==1.6.0
+pandas>=3.0.5             # 3.0.4 segfaults on 3.14 (built against a bad numpy)
+numpy>=2.2.1
+yfinance>=0.2.51
 
 # --- Dev / test ---
-pytest==8.3.4
-httpx==0.28.1
-ruff==0.8.6
+pytest>=8.3.4
+httpx>=0.28.1
+ruff>=0.8.6

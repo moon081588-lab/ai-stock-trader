@@ -60,11 +60,18 @@ export default function WatchlistRail({ entries, loading, onRemove, headline }: 
 
                 <div className="text-right">
                   <div className="num text-[0.9375rem] font-semibold">
-                    {entry.price == null ? "—" : formatPrice(entry.price, 0)}
+                    {entry.price == null
+                      ? "—"
+                      : formatPrice(
+                          entry.price,
+                          entry.market === "KR" ? 0 : 2,
+                          entry.market === "KR" ? "원" : "$",
+                        )}
                   </div>
                   {entry.change != null && entry.change_pct != null && (
                     <div className={`num text-2xs font-semibold ${toneClass(entry.change)}`}>
-                      {formatSigned(entry.change, 0)} ({formatPct(entry.change_pct)})
+                      {formatSigned(entry.change, entry.market === "KR" ? 0 : 2)} (
+                      {formatPct(entry.change_pct)})
                     </div>
                   )}
                 </div>

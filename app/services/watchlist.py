@@ -6,7 +6,7 @@ import json
 import threading
 from pathlib import Path
 
-from app.data.universe import display_name
+from app.data.universe import display_name, market_for
 from app.models.schemas import WatchlistEntry, WatchlistView
 
 DEFAULT_SYMBOLS = ("000660.KS", "005930.KS", "NVDA", "AMD", "SOXL")
@@ -54,6 +54,7 @@ def build_view(symbols: list[str], snapshots: dict[str, dict]) -> WatchlistView:
             WatchlistEntry(
                 symbol=symbol,
                 name=display_name(symbol),
+                market=market_for(symbol),
                 price=round(snap["price"], 2) if snap else None,
                 change=round(snap["change"], 2) if snap else None,
                 change_pct=round(snap["change_pct"], 2) if snap else None,

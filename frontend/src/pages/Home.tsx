@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import IndexGrid from "../components/IndexGrid";
 import MoversTable from "../components/MoversTable";
@@ -6,39 +6,134 @@ import TickerBar from "../components/TickerBar";
 import WatchlistRail from "../components/WatchlistRail";
 import { api } from "../lib/api";
 import { formatTime } from "../lib/format";
-import type { MarketFilter, SortKey } from "../lib/types";
+import type { IndexQuote, MarketFilter, MoverRow, SortKey } from "../lib/types";
 import { usePolling } from "../lib/useFetch";
+import { useLivePrices } from "../lib/useLivePrices";
 
-const REFRESH_MS = 30_000;
+// Quotes are ~15 minutes delayed and the server caches for 60s, so polling
+// faster than this just burns requests for identical data.
+const REFRESH_MS = 60_000;
+
+const SORTERS: Record<SortKey, (a: MoverRow, b: MoverRow) => number> = {
+  turnover: (a, b) => (b.turnover ?? 0) - (a.turnover ?? 0),
+  volume: (a, b) => (b.volume ?? 0) - (a.volume ?? 0),
+  market_cap: (a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0),
+  gainers: (a, b) => b.change_pct - a.change_pct,
+  losers: (a, b) => a.change_pct - b.change_pct,
+};
 
 export default function Home() {
   const [market, setMarket] = useState<MarketFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("turnover");
 
-  const board = usePolling(() => api.board(market, sortBy), REFRESH_MS, [market, sortBy]);
+  // Fetched once, independent of the chips. Filtering and re-sorting 24 rows we
+  // already hold is a local operation — round-tripping to Yahoo to reorder them
+  // was what made every chip click feel broken.
+  const board = usePolling(() => api.board("all", "turnover", 100), REFRESH_MS, []);
   const watchlist = usePolling(() => api.watchlist(), REFRESH_MS, []);
+
+  const live = useLivePrices();
+
+  // Hold the last non-empty response. An empty board is almost always a
+  // transient upstream failure, and replacing a populated table with nothing
+  // is strictly worse than showing slightly stale rows.
+  const lastGood = useRef<{ indices: IndexQuote[]; movers: MoverRow[] }>({
+    indices: [],
+    movers: [],
+  });
+
+  if (board.data?.indices.length) lastGood.current.indices = board.data.indices;
+  if (board.data?.movers.length) lastGood.current.movers = board.data.movers;
+
+  const indices = board.data?.indices.length ? board.data.indices : lastGood.current.indices;
+  const baseMovers = board.data?.movers.length ? board.data.movers : lastGood.current.movers;
+  const degraded = Boolean(board.data && board.data.movers.length === 0);
+
+  // An empty board usually means the server was still warming up. Retry in a
+  // few seconds instead of waiting out the full poll interval.
+  const boardRefreshRef = useRef(board.refresh);
+  boardRefreshRef.current = board.refresh;
+
+  useEffect(() => {
+    if (!degraded) return;
+    const id = window.setTimeout(() => boardRefreshRef.current(), 4_000);
+    return () => window.clearTimeout(id);
+  }, [degraded, board.data]);
+
+  // Ranking is computed from the REST snapshot only, so it changes when the
+  // board refreshes rather than on every tick. Re-sorting live would make rows
+  // jump around the screen continuously and force a full DOM reorder.
+  const ordered = useMemo(() => {
+    const filtered =
+      market === "all" ? baseMovers : baseMovers.filter((row) => row.market === market);
+    return [...filtered].sort(SORTERS[sortBy]).map((row, i) => ({ ...row, rank: i + 1 }));
+  }, [baseMovers, market, sortBy]);
+
+  // Reuse the previous object when a symbol's price hasn't moved. Identical
+  // references let React.memo skip rows that didn't change.
+  const mergeCache = useRef(new Map<string, { key: string; row: MoverRow }>());
+
+  const rows = useMemo(() => {
+    return ordered.map((row) => {
+      const tick = live.prices[row.symbol];
+      if (!tick) return row;
+
+      const key = `${row.rank}|${tick.price}|${row.volume}|${tick.delayed}`;
+      const cached = mergeCache.current.get(row.symbol);
+      if (cached?.key === key) return cached.row;
+
+      const merged: MoverRow = {
+        ...row,
+        price: tick.price,
+        change: tick.change ?? row.change,
+        change_pct: tick.change_pct ?? row.change_pct,
+        turnover: row.volume ? tick.price * row.volume : row.turnover,
+        live: !tick.delayed,
+      };
+
+      mergeCache.current.set(row.symbol, { key, row: merged });
+      return merged;
+    });
+  }, [ordered, live.prices]);
+
+  const watchEntries = useMemo(
+    () =>
+      (watchlist.data?.entries ?? []).map((entry) => {
+        const tick = live.prices[entry.symbol];
+        return tick
+          ? {
+              ...entry,
+              price: tick.price,
+              change: tick.change ?? entry.change,
+              change_pct: tick.change_pct ?? entry.change_pct,
+            }
+          : entry;
+      }),
+    [watchlist.data, live.prices],
+  );
 
   const watched = useMemo(
     () => new Set((watchlist.data?.entries ?? []).map((e) => e.symbol)),
     [watchlist.data],
   );
 
-  const toggleWatch = useCallback(
-    async (symbol: string) => {
-      if (watched.has(symbol)) await api.removeFromWatchlist(symbol);
-      else await api.addToWatchlist(symbol);
-      watchlist.refresh();
-    },
-    [watched, watchlist],
-  );
+  // Read mutable state through refs so these callbacks keep a stable identity.
+  // A new function each render would defeat React.memo on every table row.
+  const watchedRef = useRef(watched);
+  watchedRef.current = watched;
+  const refreshRef = useRef(watchlist.refresh);
+  refreshRef.current = watchlist.refresh;
 
-  const removeWatch = useCallback(
-    async (symbol: string) => {
-      await api.removeFromWatchlist(symbol);
-      watchlist.refresh();
-    },
-    [watchlist],
-  );
+  const toggleWatch = useCallback(async (symbol: string) => {
+    if (watchedRef.current.has(symbol)) await api.removeFromWatchlist(symbol);
+    else await api.addToWatchlist(symbol);
+    refreshRef.current();
+  }, []);
+
+  const removeWatch = useCallback(async (symbol: string) => {
+    await api.removeFromWatchlist(symbol);
+    refreshRef.current();
+  }, []);
 
   // Placeholder for the LLM summary in roadmap Phase 4. Derived, not invented.
   const headline = useMemo(() => {
@@ -70,10 +165,16 @@ export default function Home() {
             </div>
           )}
 
-          <IndexGrid indices={board.data?.indices ?? []} loading={board.loading} />
+          {degraded && !board.error && (
+            <div className="rounded-xl bg-down-soft px-4 py-3 text-sm text-down">
+              시세 서버가 준비 중이에요. 잠시 후 자동으로 다시 불러올게요.
+            </div>
+          )}
+
+          <IndexGrid indices={indices} loading={board.loading} />
 
           <MoversTable
-            rows={board.data?.movers ?? []}
+            rows={rows}
             loading={board.loading}
             market={market}
             sortBy={sortBy}
@@ -82,14 +183,16 @@ export default function Home() {
             watched={watched}
             onToggleWatch={toggleWatch}
             asOf={board.data ? formatTime(board.data.as_of) : null}
+            flash={live.flash}
+            connected={live.connected}
           />
         </div>
 
-        <TickerBar indices={board.data?.indices ?? []} />
+        <TickerBar indices={indices} />
       </main>
 
       <WatchlistRail
-        entries={watchlist.data?.entries ?? []}
+        entries={watchEntries}
         loading={watchlist.loading}
         onRemove={removeWatch}
         headline={headline}

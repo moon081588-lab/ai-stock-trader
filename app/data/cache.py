@@ -41,8 +41,15 @@ def clear() -> None:
         _store.clear()
 
 
-def ttl_cache(ttl: float, prefix: str = "") -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Cache a function's return value by its arguments for `ttl` seconds."""
+def ttl_cache(
+    ttl: float, prefix: str = "", cache_empty: bool = False
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Cache a function's return value by its arguments for `ttl` seconds.
+
+    Empty results are not cached by default. A rate-limited fetch returns an
+    empty list, and caching that would keep serving nothing for the full TTL
+    long after upstream recovered — one blip became a minute of blank UI.
+    """
 
     def decorator(fn: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(fn)
@@ -52,7 +59,8 @@ def ttl_cache(ttl: float, prefix: str = "") -> Callable[[Callable[..., T]], Call
             if hit is not None:
                 return hit
             value = fn(*args, **kwargs)
-            put(key, value, ttl)
+            if cache_empty or value:
+                put(key, value, ttl)
             return value
 
         wrapper.cache_clear = clear  # type: ignore[attr-defined]

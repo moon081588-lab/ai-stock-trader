@@ -74,3 +74,12 @@ BY_SYMBOL: dict[str, TickerSpec] = {spec.symbol: spec for spec in UNIVERSE}
 def display_name(symbol: str) -> str:
     spec = BY_SYMBOL.get(symbol.upper()) or BY_SYMBOL.get(symbol)
     return spec.name if spec else symbol.upper()
+
+
+def market_for(symbol: str) -> str:
+    """Which market a symbol trades in — decides currency formatting in the UI."""
+    spec = BY_SYMBOL.get(symbol.upper()) or BY_SYMBOL.get(symbol)
+    if spec:
+        return spec.market
+    # Yahoo suffixes Korean listings; anything else is treated as US.
+    return "KR" if symbol.upper().endswith((".KS", ".KQ")) else "US"

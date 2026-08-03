@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { formatPct, formatPrice, formatSigned, toneClass, toneStroke } from "../lib/format";
 import type { IndexQuote } from "../lib/types";
 import Sparkline from "./Sparkline";
@@ -26,7 +28,9 @@ function IndexCard({ quote }: { quote: IndexQuote }) {
   );
 }
 
-export default function IndexGrid({
+// Index cards come from the REST board, not the tick stream — memoizing keeps
+// their sparklines from re-rendering on every price update elsewhere.
+export default memo(function IndexGrid({
   indices,
   loading,
 }: {
@@ -60,4 +64,4 @@ export default function IndexGrid({
       ))}
     </section>
   );
-}
+});

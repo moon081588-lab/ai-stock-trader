@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+import asyncio
+import contextlib
+import logging
+
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from app.api import deps
 from app.data.providers import ProviderError
@@ -27,10 +31,12 @@ from app.services import dividends as dividend_service
 from app.services import forecast as forecast_service
 from app.services import market_board as board_service
 from app.services import news as news_service
-from app.services import paper_trading
+from app.services import paper_trading, streaming
 from app.services import portfolio as portfolio_service
 from app.services import stock_detail as detail_service
 from app.services import watchlist as watchlist_service
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -80,6 +86,12 @@ def get_board(
 ) -> MarketBoard:
     """Indices + movers in one round trip, so the dashboard renders in a single fetch."""
     return board_service.get_board(market=market_filter, sort_by=sort_by, limit=limit)
+
+
+@market.get("/stream/status", tags=["stream"])
+def stream_status() -> dict:
+    """Which symbols are genuinely ticking vs. falling back to polling."""
+    return streaming.status()
 
 
 # --- watchlist ---
@@ -226,5 +238,42 @@ def place_paper_order(order: OrderRequest) -> Fill:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-for sub in (market, watchlist, forecast, stocks, portfolio, news, paper):
+# --- live prices ---
+
+live = APIRouter(tags=["stream"])
+
+
+@live.websocket("/ws/prices")
+async def stream_prices(websocket: WebSocket) -> None:
+    """Push price ticks to the browser.
+
+    Sends the full current state on connect so a late-joining tab isn't blank,
+    then streams individual updates. Heartbeats keep proxies from closing an
+    idle socket outside market hours.
+    """
+    await websocket.accept()
+    queue = streaming.store.subscribe()
+
+    try:
+        await websocket.send_json({"type": "snapshot", "prices": streaming.store.snapshot()})
+
+        while True:
+            try:
+                update = await asyncio.wait_for(queue.get(), timeout=25.0)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "heartbeat"})
+                continue
+
+            await websocket.send_json({"type": "tick", "price": update})
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001 - a dead socket must not take down the server
+        log.exception("price socket failed")
+        with contextlib.suppress(Exception):
+            await websocket.close()
+    finally:
+        streaming.store.unsubscribe(queue)
+
+
+for sub in (market, watchlist, forecast, stocks, portfolio, news, paper, live):
     router.include_router(sub)

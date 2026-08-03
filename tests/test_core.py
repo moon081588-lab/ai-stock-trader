@@ -314,3 +314,17 @@ def test_watchlist_view_renders_unpriced_symbols():
     assert [e.symbol for e in view.entries] == ["NVDA", "005930.KS"]
     assert view.entries[0].price == 100.0
     assert view.entries[1].price is None  # still listed, just without a quote
+
+    # Market drives currency formatting in the UI — a US price shown in 원 is wrong.
+    assert view.entries[0].market == "US"
+    assert view.entries[1].market == "KR"
+
+
+@pytest.mark.parametrize(
+    ("symbol", "expected"),
+    [("NVDA", "US"), ("005930.KS", "KR"), ("123456.KQ", "KR"), ("UNKNOWN", "US")],
+)
+def test_market_inferred_from_symbol(symbol, expected):
+    from app.data.universe import market_for
+
+    assert market_for(symbol) == expected

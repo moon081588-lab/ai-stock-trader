@@ -9,30 +9,33 @@ dividend analytics, news sentiment signals, and a paper-trading simulator.
 
 ## Quick start
 
-Two processes. Backend first:
-
 ```bash
 cd ai-stock-trader
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # no keys required to start
-
-uvicorn app.main:app --reload   # http://127.0.0.1:8000/docs
+./start.sh
 ```
 
-Then the dashboard, in a second terminal:
+That's it. On a fresh clone it creates the virtualenv, installs both dependency
+sets, then runs the API and the dashboard together with output prefixed `[api]`
+and `[web]`. Ctrl+C stops both.
 
-```bash
-cd frontend
-npm install
-npm run dev                     # http://localhost:5173
-```
+- Dashboard: http://localhost:5173
+- API docs: http://127.0.0.1:8000/docs
 
 Vite proxies `/api` to the backend, so there's no CORS setup in dev.
 
+To run just the API: `bash scripts/dev.sh`.
+
+**Don't run bare `uvicorn app.main:app --reload`.** Plain `--reload` also
+watches `.venv/`, and site-packages churns enough on macOS to restart the server
+every few seconds — which drops the price stream, clears the board cache, and
+refetches every symbol each time until Yahoo rate-limits you. Both scripts pass
+`--reload-dir app` so only your own code triggers a restart.
+
+### Tests
+
 ```bash
-pytest && ruff check .          # backend
-cd frontend && npm run build    # frontend typecheck + bundle
+.venv/bin/pytest && .venv/bin/ruff check .   # backend
+cd frontend && npm run build                 # frontend typecheck + bundle
 ```
 
 ## What works today
@@ -50,6 +53,22 @@ cd frontend && npm run build    # frontend typecheck + bundle
 | Market board | `GET /api/v1/market/board` | Index cards + ranked movers in one call |
 | Watchlist | `GET/POST/DELETE /api/v1/watchlist` | Powers the right rail |
 | Stock detail | `GET /api/v1/stocks/{symbol}` | Quote + bars + forecast + risk metrics |
+| Live prices | `WS /api/v1/ws/prices` | Pushed ticks from Yahoo's streamer |
+| Stream health | `GET /api/v1/market/stream/status` | Which symbols are live vs. delayed |
+
+## Live prices
+
+The app holds one WebSocket open to `wss://streamer.finance.yahoo.com` — the
+same feed finance.yahoo.com uses — and fans ticks out to browsers over its own
+socket. However many tabs are open, there is exactly one upstream connection.
+
+REST still supplies the slow-moving columns (volume, market cap, prior close);
+the stream only overrides price and change. Symbols the streamer doesn't
+deliver, typically Korean listings, fall back to a 15-second poll and are
+labeled 지연 rather than 실시간.
+
+Caveat: the streamer is an undocumented endpoint. It can change without notice.
+If ticks stop, `GET /api/v1/market/stream/status` shows what's still live.
 
 ## Screens
 

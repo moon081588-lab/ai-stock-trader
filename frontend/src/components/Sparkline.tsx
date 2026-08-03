@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface Props {
   values: number[];
   stroke: string;
@@ -8,7 +10,7 @@ interface Props {
 }
 
 /** Dependency-free SVG sparkline. Recharts would be overkill for 40 points. */
-export default function Sparkline({
+export default memo(function Sparkline({
   values,
   stroke,
   width = 96,
@@ -59,4 +61,4 @@ export default function Sparkline({
       />
     </svg>
   );
-}
+});

@@ -193,6 +193,7 @@ class MarketBoard(BaseModel):
 class WatchlistEntry(BaseModel):
     symbol: str
     name: str
+    market: str = "US"
     price: float | None = None
     change: float | None = None
     change_pct: float | None = None
