@@ -19,6 +19,8 @@ class IndexSpec:
     unit: str = ""
 
 
+# Korean and US headline indices only, plus the two macro readings that sit
+# alongside them on every Korean brokerage dashboard.
 INDICES: tuple[IndexSpec, ...] = (
     IndexSpec("kospi", "코스피", "^KS11", "domestic"),
     IndexSpec("kosdaq", "코스닥", "^KQ11", "domestic"),
@@ -26,8 +28,6 @@ INDICES: tuple[IndexSpec, ...] = (
     IndexSpec("vix", "VIX", "^VIX", "macro"),
     IndexSpec("nasdaq", "나스닥", "^IXIC", "global"),
     IndexSpec("sp500", "S&P 500", "^GSPC", "global"),
-    IndexSpec("sox", "필라델피아 반도체", "^SOX", "global"),
-    IndexSpec("btc", "비트코인", "BTC-KRW", "macro", decimals=0, unit="원"),
 )
 
 
