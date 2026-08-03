@@ -68,4 +68,22 @@ echo "  api docs   http://127.0.0.1:$API_PORT/docs"
 echo "  Ctrl+C to stop both"
 echo
 
+# Open the dashboard once Vite is actually listening. Terminal.app needs a
+# ⌘-click to follow a printed URL, which is a poor greeting for a dev server.
+# Set NO_OPEN=1 to skip.
+open_when_ready() {
+  for _ in $(seq 1 60); do
+    if lsof -i ":$WEB_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+      open "http://localhost:$WEB_PORT"
+      return
+    fi
+    sleep 0.25
+  done
+  echo "[web] didn't come up within 15s — open http://localhost:$WEB_PORT yourself"
+}
+
+if [ "${NO_OPEN:-}" != "1" ] && command -v open >/dev/null 2>&1; then
+  open_when_ready &
+fi
+
 wait
