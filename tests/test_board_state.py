@@ -25,13 +25,22 @@ def warm_indices() -> list[IndexQuote]:
     ]
 
 
-def make_mover(symbol: str, market: str, price: float, change: float) -> MoverRow:
+def make_mover(
+    symbol: str,
+    market: str,
+    price: float,
+    change: float,
+    sector: str = "반도체",
+    leveraged: bool = False,
+) -> MoverRow:
     return MoverRow(
         rank=0,
         symbol=symbol,
         name=symbol,
         market=market,
         kind="stock",
+        sector=sector,
+        leveraged=leveraged,
         price=price,
         change=change,
         change_pct=change / (price - change) * 100,
@@ -158,6 +167,54 @@ def test_partial_fetch_updates_only_what_succeeded(warm_state, monkeypatch):
     assert [r.symbol for r in market_board.current_board().movers] == ["TSLA"]
     assert len(market_board.current_board().indices) == 1  # kept
     assert "indices" in market_board._state["last_error"]
+
+
+def test_sectors_average_members_and_name_the_leader():
+    market_board._state.update(
+        movers=[
+            make_mover("A", "KR", 100, 10, sector="반도체"),  # +11.11%
+            make_mover("B", "KR", 100, 2, sector="반도체"),  # +2.04%
+            make_mover("C", "US", 100, -5, sector="자동차"),
+        ],
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    sectors = {s.sector: s for s in market_board.get_sectors()}
+
+    assert sectors["반도체"].count == 2
+    assert sectors["반도체"].leader_symbol == "A"
+    assert sectors["자동차"].change_pct < 0
+    # Sorted best-first.
+    assert market_board.get_sectors()[0].sector == "반도체"
+
+
+def test_sectors_exclude_leveraged_products():
+    """A 3x ETF moving 15% would swamp the average of the sector it sits in."""
+    market_board._state.update(
+        movers=[
+            make_mover("REAL", "US", 100, 1, sector="반도체"),
+            make_mover("LEV", "US", 100, 30, sector="반도체", leveraged=True),
+        ],
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    sectors = market_board.get_sectors()
+    assert len(sectors) == 1
+    assert sectors[0].count == 1
+    assert sectors[0].leader_symbol == "REAL"
+
+
+def test_sectors_respect_the_market_filter():
+    market_board._state.update(
+        movers=[
+            make_mover("KR1", "KR", 100, 5, sector="반도체"),
+            make_mover("US1", "US", 100, 5, sector="자동차"),
+        ],
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert [s.sector for s in market_board.get_sectors(market="KR")] == ["반도체"]
+    assert [s.sector for s in market_board.get_sectors(market="US")] == ["자동차"]
 
 
 def test_successful_refresh_clears_the_error(warm_state, monkeypatch):

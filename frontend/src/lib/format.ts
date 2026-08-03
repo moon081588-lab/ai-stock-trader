@@ -1,5 +1,7 @@
 /** Formatting helpers. Korean number conventions (억/조) for large figures. */
 
+import type { Currency } from "./types";
+
 export function formatPrice(value: number, decimals = 0, unit = "원"): string {
   return `${value.toLocaleString("ko-KR", {
     minimumFractionDigits: decimals,
@@ -46,6 +48,33 @@ export function toneClass(value: number | null | undefined): string {
 export function toneStroke(value: number | null | undefined): string {
   if (value == null || value === 0) return "#6B7180";
   return value > 0 ? "#F5636E" : "#5B8DEF";
+}
+
+/**
+ * Convert a native-currency price into the display currency.
+ *
+ * Prices arrive in whatever the listing trades in — KRW for .KS, USD for US
+ * names — so conversion needs both the source market and the live USDKRW rate.
+ * If we don't have a rate yet, leave the number alone rather than inventing one.
+ */
+export function convert(
+  value: number,
+  from: "KR" | "US",
+  to: Currency,
+  usdkrw: number | null,
+): number {
+  if (!usdkrw) return value;
+  if (from === "KR" && to === "USD") return value / usdkrw;
+  if (from === "US" && to === "KRW") return value * usdkrw;
+  return value;
+}
+
+export function currencyUnit(currency: Currency): string {
+  return currency === "KRW" ? "원" : "$";
+}
+
+export function currencyDecimals(currency: Currency): number {
+  return currency === "KRW" ? 0 : 2;
 }
 
 export function formatTime(iso: string): string {

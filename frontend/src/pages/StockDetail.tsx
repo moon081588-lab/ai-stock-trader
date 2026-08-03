@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import NewsFeed from "../components/NewsFeed";
@@ -39,8 +39,14 @@ function Metric({ label, value, tone, hint }: { label: string; value: string; to
   );
 }
 
-export default function StockDetail() {
+export default function StockDetail({ onView }: { onView: (symbol: string) => void }) {
   const { symbol = "" } = useParams();
+
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+  useEffect(() => {
+    if (symbol) onViewRef.current(symbol);
+  }, [symbol]);
   const [lookback, setLookback] = useState(365);
   const [method, setMethod] = useState<ForecastMethod>("monte_carlo");
   const [horizon, setHorizon] = useState(63);

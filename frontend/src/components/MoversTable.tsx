@@ -1,8 +1,16 @@
 import { memo } from "react";
 import { Link } from "react-router-dom";
 
-import { formatKrwCompact, formatPct, formatPrice, toneClass } from "../lib/format";
-import type { MarketFilter, MoverRow, SortKey } from "../lib/types";
+import {
+  convert,
+  currencyDecimals,
+  currencyUnit,
+  formatKrwCompact,
+  formatPct,
+  formatPrice,
+  toneClass,
+} from "../lib/format";
+import type { Currency, MarketFilter, MoverRow, SortKey } from "../lib/types";
 import type { FlashDirection } from "../lib/useLivePrices";
 import TickerAvatar from "./TickerAvatar";
 
@@ -29,9 +37,13 @@ interface Props {
   onSortChange: (value: SortKey) => void;
   watched: Set<string>;
   onToggleWatch: (symbol: string) => void;
-  asOf: string | null;
   flash: Record<string, FlashDirection>;
-  connected: boolean;
+  currency: Currency;
+  usdkrw: number | null;
+  hideLeveraged: boolean;
+  onHideLeveragedChange: (value: boolean) => void;
+  selected: string | null;
+  onSelect: (symbol: string) => void;
 }
 
 function Heart({ filled }: { filled: boolean }) {
@@ -45,35 +57,46 @@ function Heart({ filled }: { filled: boolean }) {
   );
 }
 
-/**
- * One table row, memoized.
- *
- * Ticks arrive for all 24 symbols at once but usually move only a few prices.
- * Home reuses row objects that didn't change, so this comparison lets React
- * skip re-rendering the untouched majority.
- */
 const Row = memo(function Row({
   row,
   watched,
   flashDir,
   onToggleWatch,
+  currency,
+  usdkrw,
+  selected,
+  onSelect,
 }: {
   row: MoverRow;
   watched: boolean;
   flashDir: FlashDirection | undefined;
   onToggleWatch: (symbol: string) => void;
+  currency: Currency;
+  usdkrw: number | null;
+  selected: boolean;
+  onSelect: (symbol: string) => void;
 }) {
   const strong = Math.abs(row.change_pct) >= 5;
   const flashClass =
     flashDir === "up" ? "animate-flashUp" : flashDir === "down" ? "animate-flashDown" : "";
 
+  const price = convert(row.price, row.market, currency, usdkrw);
+
   return (
-    <tr className="group transition-colors hover:bg-hover">
+    <tr
+      onClick={() => onSelect(row.symbol)}
+      className={`group cursor-pointer transition-colors ${
+        selected ? "bg-hover" : "hover:bg-hover"
+      }`}
+    >
       <td className="py-2.5 pl-5">
         <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={() => onToggleWatch(row.symbol)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleWatch(row.symbol);
+            }}
             aria-label={`${row.name} 관심 종목 토글`}
             className="opacity-70 transition-opacity hover:opacity-100"
           >
@@ -84,28 +107,30 @@ const Row = memo(function Row({
       </td>
 
       <td className="py-2.5">
-        <Link
-          to={`/stock/${encodeURIComponent(row.symbol)}`}
-          className="flex items-center gap-2.5"
-        >
+        <div className="flex items-center gap-2.5">
           <TickerAvatar symbol={row.symbol} name={row.name} />
           <div className="min-w-0">
-            <div className="truncate text-[0.9375rem] font-semibold group-hover:underline">
+            <Link
+              to={`/stock/${encodeURIComponent(row.symbol)}`}
+              onClick={(event) => event.stopPropagation()}
+              className="block truncate text-[0.9375rem] font-semibold hover:underline"
+            >
               {row.name}
-            </div>
-            <div className="text-2xs text-ink-faint">
+            </Link>
+            <div className="flex items-center gap-1.5 text-2xs text-ink-faint">
               {row.symbol}
-              {row.kind === "etf" && <span className="tag ml-1.5">ETF</span>}
+              {row.kind === "etf" && <span className="tag">ETF</span>}
+              {row.leveraged && <span className="tag text-up">레버리지</span>}
             </div>
           </div>
-        </Link>
+        </div>
       </td>
 
       <td className="py-2.5 pr-6 text-right">
         <span
           className={`num inline-block rounded-md px-1.5 py-0.5 text-[0.9375rem] font-semibold ${flashClass}`}
         >
-          {formatPrice(row.price, row.market === "KR" ? 0 : 2, row.market === "KR" ? "원" : "$")}
+          {formatPrice(price, currencyDecimals(currency), currencyUnit(currency))}
         </span>
       </td>
 
@@ -138,31 +163,16 @@ export default function MoversTable({
   onSortChange,
   watched,
   onToggleWatch,
-  asOf,
   flash,
-  connected,
+  currency,
+  usdkrw,
+  hideLeveraged,
+  onHideLeveragedChange,
+  selected,
+  onSelect,
 }: Props) {
-  const liveCount = rows.filter((row) => row.live).length;
   return (
-    <section className="card overflow-hidden">
-      <div className="flex items-center gap-3 px-5 pt-5">
-        <h2 className="text-[1.0625rem] font-bold">실시간 차트</h2>
-
-        {connected ? (
-          <span className="flex items-center gap-1.5 text-[0.8125rem] text-ink-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#26A96C]" />
-            실시간 {liveCount}종목
-            {rows.length > liveCount && (
-              <span className="text-ink-faint">· 지연 {rows.length - liveCount}종목</span>
-            )}
-          </span>
-        ) : (
-          <span className="text-[0.8125rem] text-ink-faint">
-            {loading ? "시세를 불러오는 중이에요" : asOf ? `${asOf} 기준 · 지연 시세` : "지연 시세"}
-          </span>
-        )}
-      </div>
-
+    <div className="flex min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
         {MARKETS.map((m) => (
           <button
@@ -185,10 +195,25 @@ export default function MoversTable({
             {s.label}
           </button>
         ))}
+        <span className="mx-1.5 h-4 w-px bg-line" />
+        <button
+          type="button"
+          onClick={() => onHideLeveragedChange(!hideLeveraged)}
+          className={`chip flex items-center gap-1.5 ${hideLeveraged ? "chip-active" : ""}`}
+        >
+          <span
+            className={`grid h-3.5 w-3.5 place-items-center rounded-full text-[9px] ${
+              hideLeveraged ? "bg-brand text-white" : "bg-line"
+            }`}
+          >
+            {hideLeveraged ? "✓" : ""}
+          </span>
+          투자위험 종목 숨기기
+        </button>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse">
+        <table className="w-full min-w-[640px] border-collapse">
           <thead>
             <tr className="text-[0.8125rem] text-ink-faint">
               <th className="w-16 py-2 pl-5 text-left font-medium">순위</th>
@@ -215,6 +240,10 @@ export default function MoversTable({
                     watched={watched.has(row.symbol)}
                     flashDir={flash[row.symbol]}
                     onToggleWatch={onToggleWatch}
+                    currency={currency}
+                    usdkrw={usdkrw}
+                    selected={selected === row.symbol}
+                    onSelect={onSelect}
                   />
                 ))}
           </tbody>
@@ -226,6 +255,6 @@ export default function MoversTable({
           표시할 종목이 없어요. 잠시 후 다시 시도해 주세요.
         </p>
       )}
-    </section>
+    </div>
   );
 }

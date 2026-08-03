@@ -164,6 +164,34 @@ class IndexQuote(BaseModel):
     sparkline: list[float] = Field(default_factory=list)
 
 
+class SectorPerformance(BaseModel):
+    """One row of 지금 뜨는 산업, aggregated over the tracked universe."""
+
+    sector: str
+    change_pct: float
+    count: int
+    turnover: float | None = None
+    leader_symbol: str
+    leader_name: str
+    leader_change_pct: float
+
+
+class EarningsEvent(BaseModel):
+    symbol: str
+    name: str
+    market: str
+    event_date: date
+    days_away: int
+
+
+class CalendarView(BaseModel):
+    events: list[EarningsEvent]
+    note: str = Field(
+        "실적 발표 일정만 제공해요. 미국 고용지표 같은 거시 일정은 포함되지 않아요.",
+        description="Earnings only — no macro calendar source is available.",
+    )
+
+
 class MoverRow(BaseModel):
     """One row of the ranked table."""
 
@@ -172,6 +200,8 @@ class MoverRow(BaseModel):
     name: str
     market: str
     kind: str
+    sector: str = "기타"
+    leveraged: bool = False
     price: float
     change: float
     change_pct: float

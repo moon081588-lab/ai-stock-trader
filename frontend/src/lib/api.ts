@@ -1,10 +1,12 @@
 import type {
+  CalendarView,
   DividendSummary,
   ForecastMethod,
   MarketBoard,
   MarketFilter,
   NewsSummary,
   PortfolioSummary,
+  SectorPerformance,
   SortKey,
   StockDetail,
   WatchlistView,
@@ -45,6 +47,11 @@ export const api = {
     request<MarketBoard>(
       `/market/board?market=${market}&sort_by=${sortBy}&limit=${limit}`,
     ),
+
+  sectors: (market: MarketFilter) =>
+    request<SectorPerformance[]>(`/market/sectors?market=${market}`),
+
+  calendar: () => request<CalendarView>("/market/calendar"),
 
   watchlist: () => request<WatchlistView>("/watchlist"),
 

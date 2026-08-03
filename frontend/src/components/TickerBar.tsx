@@ -4,7 +4,8 @@ import { formatPct, formatPrice, formatSigned, toneClass } from "../lib/format";
 import type { IndexQuote } from "../lib/types";
 
 export default memo(function TickerBar({ indices }: { indices: IndexQuote[] }) {
-  const global = indices.filter((q) => q.group === "global");
+  // "ticker" group exists only down here — 달러 인덱스 doesn't warrant a card.
+  const global = indices.filter((q) => q.group === "global" || q.group === "ticker");
 
   return (
     <footer className="sticky bottom-0 z-20 flex items-center gap-6 border-t border-line bg-base px-6 py-3 text-[0.8125rem]">

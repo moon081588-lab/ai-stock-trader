@@ -47,6 +47,7 @@ export default memo(function IndexGrid({
     );
   }
 
+  // "ticker"-group entries are intentionally excluded — they render in the bar.
   const columns = [
     indices.filter((q) => q.group === "domestic"),
     indices.filter((q) => q.group === "macro"),

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from app.api import deps
 from app.data.providers import ProviderError
 from app.models.schemas import (
+    CalendarView,
     DividendSummary,
     Fill,
     Forecast,
@@ -24,9 +25,11 @@ from app.models.schemas import (
     PortfolioSummary,
     PriceHistory,
     Quote,
+    SectorPerformance,
     StockDetail,
     WatchlistView,
 )
+from app.services import calendar as calendar_service
 from app.services import dividends as dividend_service
 from app.services import forecast as forecast_service
 from app.services import market_board as board_service
@@ -86,6 +89,20 @@ def get_board(
 ) -> MarketBoard:
     """Indices + movers in one round trip, so the dashboard renders in a single fetch."""
     return board_service.get_board(market=market_filter, sort_by=sort_by, limit=limit)
+
+
+@market.get("/sectors", response_model=list[SectorPerformance])
+def get_sectors(
+    market_filter: str = Query("all", alias="market", pattern="^(all|KR|US)$"),
+) -> list[SectorPerformance]:
+    """지금 뜨는 산업. Averaged over the tracked universe, not the whole market."""
+    return board_service.get_sectors(market=market_filter)
+
+
+@market.get("/calendar", response_model=CalendarView)
+def get_calendar() -> CalendarView:
+    """Upcoming earnings for tracked names. No macro events — see the note field."""
+    return calendar_service.upcoming_earnings()
 
 
 @market.get("/stream/status", tags=["stream"])

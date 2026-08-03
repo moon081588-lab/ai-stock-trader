@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import CalendarCard from "../components/CalendarCard";
 import IndexGrid from "../components/IndexGrid";
 import MoversTable from "../components/MoversTable";
+import PreviewPanel from "../components/PreviewPanel";
+import SectorTable from "../components/SectorTable";
 import TickerBar from "../components/TickerBar";
 import WatchlistRail from "../components/WatchlistRail";
 import { api } from "../lib/api";
 import { formatTime } from "../lib/format";
-import type { IndexQuote, MarketFilter, MoverRow, SortKey } from "../lib/types";
+import type {
+  Currency,
+  IndexQuote,
+  MarketFilter,
+  MoverRow,
+  SortKey,
+} from "../lib/types";
 import { usePolling } from "../lib/useFetch";
 import { useLivePrices } from "../lib/useLivePrices";
 
 // Quotes are ~15 minutes delayed and the server caches for 60s, so polling
 // faster than this just burns requests for identical data.
 const REFRESH_MS = 60_000;
+const CALENDAR_REFRESH_MS = 30 * 60_000;
 
 const SORTERS: Record<SortKey, (a: MoverRow, b: MoverRow) => number> = {
   turnover: (a, b) => (b.turnover ?? 0) - (a.turnover ?? 0),
@@ -22,16 +32,26 @@ const SORTERS: Record<SortKey, (a: MoverRow, b: MoverRow) => number> = {
   losers: (a, b) => a.change_pct - b.change_pct,
 };
 
-export default function Home() {
+type Tab = "movers" | "sectors";
+
+interface Props {
+  onRowsChange: (rows: MoverRow[]) => void;
+  onView: (symbol: string) => void;
+}
+
+export default function Home({ onRowsChange, onView }: Props) {
   const [market, setMarket] = useState<MarketFilter>("all");
   const [sortBy, setSortBy] = useState<SortKey>("turnover");
+  const [tab, setTab] = useState<Tab>("movers");
+  const [currency, setCurrency] = useState<Currency>("KRW");
+  const [hideLeveraged, setHideLeveraged] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(true);
 
-  // Fetched once, independent of the chips. Filtering and re-sorting 24 rows we
-  // already hold is a local operation — round-tripping to Yahoo to reorder them
-  // was what made every chip click feel broken.
   const board = usePolling(() => api.board("all", "turnover", 100), REFRESH_MS, []);
   const watchlist = usePolling(() => api.watchlist(), REFRESH_MS, []);
-
+  const sectors = usePolling(() => api.sectors(market), REFRESH_MS, [market]);
+  const calendar = usePolling(() => api.calendar(), CALENDAR_REFRESH_MS, []);
   const live = useLivePrices();
 
   // Hold the last non-empty response. An empty board is almost always a
@@ -49,8 +69,11 @@ export default function Home() {
   const baseMovers = board.data?.movers.length ? board.data.movers : lastGood.current.movers;
   const degraded = Boolean(board.data && board.data.movers.length === 0);
 
-  // An empty board usually means the server was still warming up. Retry in a
-  // few seconds instead of waiting out the full poll interval.
+  const usdkrw = useMemo(
+    () => indices.find((q) => q.key === "usdkrw")?.price ?? null,
+    [indices],
+  );
+
   const boardRefreshRef = useRef(board.refresh);
   boardRefreshRef.current = board.refresh;
 
@@ -64,10 +87,10 @@ export default function Home() {
   // board refreshes rather than on every tick. Re-sorting live would make rows
   // jump around the screen continuously and force a full DOM reorder.
   const ordered = useMemo(() => {
-    const filtered =
-      market === "all" ? baseMovers : baseMovers.filter((row) => row.market === market);
+    let filtered = market === "all" ? baseMovers : baseMovers.filter((r) => r.market === market);
+    if (hideLeveraged) filtered = filtered.filter((r) => !r.leveraged);
     return [...filtered].sort(SORTERS[sortBy]).map((row, i) => ({ ...row, rank: i + 1 }));
-  }, [baseMovers, market, sortBy]);
+  }, [baseMovers, market, sortBy, hideLeveraged]);
 
   // Reuse the previous object when a symbol's price hasn't moved. Identical
   // references let React.memo skip rows that didn't change.
@@ -95,6 +118,9 @@ export default function Home() {
       return merged;
     });
   }, [ordered, live.prices]);
+
+  // Publish rows upward so the search overlay can index them.
+  useEffect(() => onRowsChange(rows), [rows, onRowsChange]);
 
   const watchEntries = useMemo(
     () =>
@@ -135,14 +161,28 @@ export default function Home() {
     refreshRef.current();
   }, []);
 
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+
+  const select = useCallback((symbol: string) => {
+    setSelected(symbol);
+    onViewRef.current(symbol);
+  }, []);
+
+  const selectedRow = useMemo(
+    () => rows.find((r) => r.symbol === selected) ?? null,
+    [rows, selected],
+  );
+
   // Placeholder for the LLM summary in roadmap Phase 4. Derived, not invented.
   const headline = useMemo(() => {
-    const movers = board.data?.movers ?? [];
-    if (movers.length === 0) return null;
-    const top = [...movers].sort((a, b) => b.change_pct - a.change_pct)[0];
-    const advancing = movers.filter((m) => m.change_pct > 0).length;
-    return `${top.name} ${top.change_pct > 0 ? "상승" : "하락"} 주도 · 추적 종목 ${movers.length}개 중 ${advancing}개 상승`;
-  }, [board.data]);
+    if (rows.length === 0) return null;
+    const top = [...rows].sort((a, b) => b.change_pct - a.change_pct)[0];
+    const advancing = rows.filter((m) => m.change_pct > 0).length;
+    return `${top.name} ${top.change_pct > 0 ? "상승" : "하락"} 주도 · 추적 종목 ${rows.length}개 중 ${advancing}개 상승`;
+  }, [rows]);
+
+  const liveCount = rows.filter((r) => r.live).length;
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -157,6 +197,14 @@ export default function Home() {
               <span className="h-1.5 w-1.5 rounded-full bg-[#26A96C]" />
               해외 데이마켓 09:00 ~ 17:00
             </span>
+
+            <button
+              type="button"
+              onClick={() => setSummaryOpen((open) => !open)}
+              className="ml-auto text-ink-faint transition-colors hover:text-ink-muted"
+            >
+              {summaryOpen ? "요약 접기" : "요약 펼치기"}
+            </button>
           </div>
 
           {board.error && (
@@ -171,21 +219,82 @@ export default function Home() {
             </div>
           )}
 
-          <IndexGrid indices={indices} loading={board.loading} />
+          {summaryOpen && (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
+              <IndexGrid indices={indices} loading={board.loading} />
+              <CalendarCard calendar={calendar.data} loading={calendar.loading} />
+            </div>
+          )}
 
-          <MoversTable
-            rows={rows}
-            loading={board.loading}
-            market={market}
-            sortBy={sortBy}
-            onMarketChange={setMarket}
-            onSortChange={setSortBy}
-            watched={watched}
-            onToggleWatch={toggleWatch}
-            asOf={board.data ? formatTime(board.data.as_of) : null}
-            flash={live.flash}
-            connected={live.connected}
-          />
+          <section className="card overflow-hidden">
+            <div className="flex items-center gap-4 px-5 pt-5">
+              <button
+                type="button"
+                onClick={() => setTab("movers")}
+                className={`text-[1.0625rem] font-bold transition-colors ${
+                  tab === "movers" ? "text-ink" : "text-ink-faint hover:text-ink-muted"
+                }`}
+              >
+                실시간 차트
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("sectors")}
+                className={`text-[1.0625rem] font-bold transition-colors ${
+                  tab === "sectors" ? "text-ink" : "text-ink-faint hover:text-ink-muted"
+                }`}
+              >
+                지금 뜨는 산업
+              </button>
+
+              <span className="ml-auto text-[0.8125rem]">
+                {live.connected ? (
+                  <span className="flex items-center gap-1.5 text-ink-muted">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#26A96C]" />
+                    실시간 {liveCount}종목
+                    {rows.length > liveCount && (
+                      <span className="text-ink-faint">
+                        · 지연 {rows.length - liveCount}종목
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-ink-faint">
+                    {board.data ? `${formatTime(board.data.as_of)} 기준 · 지연 시세` : "지연 시세"}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {tab === "movers" ? (
+              <div className="flex">
+                <MoversTable
+                  rows={rows}
+                  loading={board.loading}
+                  market={market}
+                  sortBy={sortBy}
+                  onMarketChange={setMarket}
+                  onSortChange={setSortBy}
+                  watched={watched}
+                  onToggleWatch={toggleWatch}
+                  flash={live.flash}
+                  currency={currency}
+                  usdkrw={usdkrw}
+                  hideLeveraged={hideLeveraged}
+                  onHideLeveragedChange={setHideLeveraged}
+                  selected={selected}
+                  onSelect={select}
+                />
+                <div className="hidden w-[380px] shrink-0 border-l border-line xl:block">
+                  <PreviewPanel row={selectedRow} currency={currency} usdkrw={usdkrw} />
+                </div>
+              </div>
+            ) : (
+              <div className="pt-3">
+                <SectorTable sectors={sectors.data ?? []} loading={sectors.loading} />
+              </div>
+            )}
+          </section>
         </div>
 
         <TickerBar indices={indices} />
@@ -196,6 +305,9 @@ export default function Home() {
         loading={watchlist.loading}
         onRemove={removeWatch}
         headline={headline}
+        currency={currency}
+        usdkrw={usdkrw}
+        onCurrencyChange={setCurrency}
       />
     </div>
   );

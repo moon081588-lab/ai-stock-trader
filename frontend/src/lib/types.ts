@@ -4,7 +4,8 @@ export interface IndexQuote {
   key: string;
   label: string;
   symbol: string;
-  group: "domestic" | "global" | "macro";
+  /** "ticker" entries render only in the bottom bar, never as a card. */
+  group: "domestic" | "global" | "macro" | "ticker";
   price: number;
   change: number;
   change_pct: number;
@@ -22,12 +23,40 @@ export interface MoverRow {
   price: number;
   change: number;
   change_pct: number;
+  sector: string;
+  leveraged: boolean;
   volume: number | null;
   turnover: number | null;
   market_cap: number | null;
   /** Set client-side once a live tick has been merged in. */
   live?: boolean;
 }
+
+export interface SectorPerformance {
+  sector: string;
+  change_pct: number;
+  count: number;
+  turnover: number | null;
+  leader_symbol: string;
+  leader_name: string;
+  leader_change_pct: number;
+}
+
+export interface EarningsEvent {
+  symbol: string;
+  name: string;
+  market: "KR" | "US";
+  event_date: string;
+  days_away: number;
+}
+
+export interface CalendarView {
+  events: EarningsEvent[];
+  note: string;
+}
+
+/** Display currency. Prices are stored in their native currency and converted. */
+export type Currency = "KRW" | "USD";
 
 export interface MarketBoard {
   as_of: string;

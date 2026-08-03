@@ -5,7 +5,7 @@ const LINKS = [
   { to: "/account", label: "내 계좌", end: false },
 ];
 
-export default function TopNav() {
+export default function TopNav({ onOpenSearch }: { onOpenSearch: () => void }) {
   // Solid background, not backdrop-blur: blurring a sticky full-width bar forces
   // a repaint of everything behind it on every scroll frame.
   return (
@@ -41,6 +41,19 @@ export default function TopNav() {
           </NavLink>
         ))}
       </nav>
+
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="ml-auto flex w-72 items-center gap-2.5 rounded-xl bg-surface px-3.5 py-2 text-sm text-ink-faint transition-colors hover:bg-hover"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden>
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+          <path d="M16.5 16.5 21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <span className="flex-1 text-left">종목 검색</span>
+        <kbd className="rounded border border-line px-1.5 py-0.5 text-2xs">/</kbd>
+      </button>
     </header>
   );
 }

@@ -1,7 +1,15 @@
 import { Link } from "react-router-dom";
 
-import { formatPct, formatPrice, formatSigned, toneClass } from "../lib/format";
-import type { WatchlistEntry } from "../lib/types";
+import {
+  convert,
+  currencyDecimals,
+  currencyUnit,
+  formatPct,
+  formatPrice,
+  formatSigned,
+  toneClass,
+} from "../lib/format";
+import type { Currency, WatchlistEntry } from "../lib/types";
 import TickerAvatar from "./TickerAvatar";
 
 interface Props {
@@ -9,13 +17,41 @@ interface Props {
   loading: boolean;
   onRemove: (symbol: string) => void;
   headline: string | null;
+  currency: Currency;
+  usdkrw: number | null;
+  onCurrencyChange: (value: Currency) => void;
 }
 
-export default function WatchlistRail({ entries, loading, onRemove, headline }: Props) {
+export default function WatchlistRail({
+  entries,
+  loading,
+  onRemove,
+  headline,
+  currency,
+  usdkrw,
+  onCurrencyChange,
+}: Props) {
   return (
     <aside className="flex h-full w-[360px] shrink-0 flex-col gap-4 border-l border-line bg-base px-5 py-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[1.0625rem] font-bold">관심</h2>
+
+        <div className="flex items-center rounded-full bg-raised p-0.5">
+          {(["USD", "KRW"] as const).map((code) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => onCurrencyChange(code)}
+              disabled={!usdkrw}
+              aria-label={code === "USD" ? "달러로 보기" : "원화로 보기"}
+              className={`rounded-full px-2.5 py-1 text-2xs font-semibold transition-colors disabled:opacity-40 ${
+                currency === code ? "bg-hover text-ink" : "text-ink-faint"
+              }`}
+            >
+              {code === "USD" ? "$" : "원"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {headline && (
@@ -63,15 +99,18 @@ export default function WatchlistRail({ entries, loading, onRemove, headline }: 
                     {entry.price == null
                       ? "—"
                       : formatPrice(
-                          entry.price,
-                          entry.market === "KR" ? 0 : 2,
-                          entry.market === "KR" ? "원" : "$",
+                          convert(entry.price, entry.market, currency, usdkrw),
+                          currencyDecimals(currency),
+                          currencyUnit(currency),
                         )}
                   </div>
                   {entry.change != null && entry.change_pct != null && (
                     <div className={`num text-2xs font-semibold ${toneClass(entry.change)}`}>
-                      {formatSigned(entry.change, entry.market === "KR" ? 0 : 2)} (
-                      {formatPct(entry.change_pct)})
+                      {formatSigned(
+                        convert(entry.change, entry.market, currency, usdkrw),
+                        currencyDecimals(currency),
+                      )}{" "}
+                      ({formatPct(entry.change_pct)})
                     </div>
                   )}
                 </div>

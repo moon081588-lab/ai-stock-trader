@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from app.data.cache import ttl_cache
 from app.data.universe import INDICES, UNIVERSE, IndexSpec, TickerSpec
-from app.models.schemas import IndexQuote, MarketBoard, MoverRow
+from app.models.schemas import IndexQuote, MarketBoard, MoverRow, SectorPerformance
 
 log = logging.getLogger(__name__)
 
@@ -185,6 +185,8 @@ def _build_mover(spec: TickerSpec, snap: dict, market_cap: float | None) -> Move
         name=spec.name,
         market=spec.market,
         kind=spec.kind,
+        sector=spec.sector,
+        leveraged=spec.leveraged,
         price=round(price, 2),
         change=round(snap["change"], 2),
         change_pct=round(snap["change_pct"], 2),
@@ -347,6 +349,42 @@ def health() -> dict:
         "updated_at": _state["updated_at"].isoformat() if _state["updated_at"] else None,
         "last_error": _state["last_error"],
     }
+
+
+def get_sectors(market: str = "all") -> list[SectorPerformance]:
+    """지금 뜨는 산업, computed from the board already in memory.
+
+    This is the average move across *our tracked universe*, not the whole
+    market — with roughly two dozen names a sector can be one or two stocks.
+    The count is returned so the UI can say so.
+    """
+    rows = [
+        row
+        for row in _state["movers"]
+        if (market == "all" or row.market == market.upper()) and not row.leveraged
+    ]
+
+    grouped: dict[str, list[MoverRow]] = {}
+    for row in rows:
+        grouped.setdefault(row.sector, []).append(row)
+
+    sectors = []
+    for sector, members in grouped.items():
+        leader = max(members, key=lambda r: r.change_pct)
+        turnovers = [r.turnover for r in members if r.turnover]
+        sectors.append(
+            SectorPerformance(
+                sector=sector,
+                change_pct=round(sum(r.change_pct for r in members) / len(members), 2),
+                count=len(members),
+                turnover=round(sum(turnovers), 2) if turnovers else None,
+                leader_symbol=leader.symbol,
+                leader_name=leader.name,
+                leader_change_pct=leader.change_pct,
+            )
+        )
+
+    return sorted(sectors, key=lambda s: s.change_pct, reverse=True)
 
 
 def get_board(market: str = "all", sort_by: str = "turnover", limit: int = 30) -> MarketBoard:
