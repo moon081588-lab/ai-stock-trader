@@ -45,8 +45,10 @@ export default function PreviewPanel({ row, currency, usdkrw }: Props) {
   );
 
   if (!row) {
+    // Fixed height, not h-full: the table can be 24 rows tall, and centring the
+    // placeholder in a column that long put it well below the fold.
     return (
-      <div className="grid h-full min-h-[320px] place-items-center px-6 text-center">
+      <div className="grid h-[420px] place-items-center px-6 text-center">
         <p className="text-sm leading-relaxed text-ink-faint">
           종목을 선택하면
           <br />
@@ -64,7 +66,7 @@ export default function PreviewPanel({ row, currency, usdkrw }: Props) {
   const closes = (d?.bars ?? []).map((bar) => bar.close);
 
   return (
-    <div className="flex h-full flex-col gap-4 px-5 py-4">
+    <div className="flex flex-col gap-4 px-5 py-4">
       <div className="flex items-center gap-2.5">
         <TickerAvatar symbol={row.symbol} name={row.name} size={34} />
         <div className="min-w-0 flex-1">
@@ -87,7 +89,7 @@ export default function PreviewPanel({ row, currency, usdkrw }: Props) {
           <Sparkline
             values={closes}
             stroke={toneStroke(row.change)}
-            width={320}
+            width={300}
             height={90}
             baseline={false}
           />
@@ -117,7 +119,7 @@ export default function PreviewPanel({ row, currency, usdkrw }: Props) {
 
       <Link
         to={`/stock/${encodeURIComponent(row.symbol)}`}
-        className="mt-auto rounded-xl bg-raised py-2.5 text-center text-sm font-semibold transition-colors hover:bg-hover"
+        className="rounded-xl bg-raised py-2.5 text-center text-sm font-semibold transition-colors hover:bg-hover"
       >
         종목 상세 보기
       </Link>

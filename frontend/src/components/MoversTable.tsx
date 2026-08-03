@@ -126,7 +126,9 @@ const Row = memo(function Row({
         </div>
       </td>
 
-      <td className="py-2.5 pr-6 text-right">
+      {/* whitespace-nowrap everywhere below: Korean figures like 1,147.8조원 were
+          breaking across two lines once the preview panel narrowed the table. */}
+      <td className="whitespace-nowrap py-2.5 pr-6 text-right">
         <span
           className={`num inline-block rounded-md px-1.5 py-0.5 text-[0.9375rem] font-semibold ${flashClass}`}
         >
@@ -134,7 +136,7 @@ const Row = memo(function Row({
         </span>
       </td>
 
-      <td className="py-2.5 pr-6 text-right">
+      <td className="whitespace-nowrap py-2.5 pr-6 text-right">
         <span
           className={`num inline-block rounded-md px-2 py-1 text-[0.9375rem] font-bold ${toneClass(
             row.change_pct,
@@ -144,10 +146,10 @@ const Row = memo(function Row({
         </span>
       </td>
 
-      <td className="num py-2.5 pr-6 text-right text-sm text-ink-muted">
+      <td className="num whitespace-nowrap py-2.5 pr-6 text-right text-sm text-ink-muted">
         {formatKrwCompact(row.turnover)}
       </td>
-      <td className="num py-2.5 pr-5 text-right text-sm text-ink-muted">
+      <td className="num hidden whitespace-nowrap py-2.5 pr-5 text-right text-sm text-ink-muted 2xl:table-cell">
         {formatKrwCompact(row.market_cap)}
       </td>
     </tr>
@@ -199,14 +201,27 @@ export default function MoversTable({
         <button
           type="button"
           onClick={() => onHideLeveragedChange(!hideLeveraged)}
-          className={`chip flex items-center gap-1.5 ${hideLeveraged ? "chip-active" : ""}`}
+          className={`chip flex items-center gap-1.5 whitespace-nowrap ${
+            hideLeveraged ? "chip-active" : ""
+          }`}
         >
           <span
-            className={`grid h-3.5 w-3.5 place-items-center rounded-full text-[9px] ${
-              hideLeveraged ? "bg-brand text-white" : "bg-line"
+            className={`grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors ${
+              hideLeveraged ? "bg-brand" : "border border-line"
             }`}
           >
-            {hideLeveraged ? "✓" : ""}
+            {hideLeveraged && (
+              <svg width="9" height="9" viewBox="0 0 12 12" aria-hidden>
+                <path
+                  d="M2.5 6.2 4.8 8.5 9.5 3.8"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
           </span>
           투자위험 종목 숨기기
         </button>
@@ -220,8 +235,10 @@ export default function MoversTable({
               <th className="py-2 text-left font-medium">종목</th>
               <th className="py-2 pr-6 text-right font-medium">현재가</th>
               <th className="py-2 pr-6 text-right font-medium">등락률</th>
-              <th className="py-2 pr-6 text-right font-medium">거래대금</th>
-              <th className="py-2 pr-5 text-right font-medium">시가총액</th>
+              <th className="whitespace-nowrap py-2 pr-6 text-right font-medium">거래대금</th>
+              <th className="hidden whitespace-nowrap py-2 pr-5 text-right font-medium 2xl:table-cell">
+                시가총액
+              </th>
             </tr>
           </thead>
           <tbody>

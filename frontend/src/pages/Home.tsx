@@ -219,8 +219,10 @@ export default function Home({ onRowsChange, onView }: Props) {
             </div>
           )}
 
+          {/* items-start so the index grid keeps its natural height instead of
+              stretching to match a taller calendar card and leaving dead space. */}
           {summaryOpen && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <IndexGrid indices={indices} loading={board.loading} />
               <CalendarCard calendar={calendar.data} loading={calendar.loading} />
             </div>
@@ -285,8 +287,11 @@ export default function Home({ onRowsChange, onView }: Props) {
                   selected={selected}
                   onSelect={select}
                 />
-                <div className="hidden w-[380px] shrink-0 border-l border-line xl:block">
-                  <PreviewPanel row={selectedRow} currency={currency} usdkrw={usdkrw} />
+                {/* Sticky so the preview stays in view while the table scrolls. */}
+                <div className="hidden w-[360px] shrink-0 border-l border-line xl:block">
+                  <div className="sticky top-20">
+                    <PreviewPanel row={selectedRow} currency={currency} usdkrw={usdkrw} />
+                  </div>
                 </div>
               </div>
             ) : (
